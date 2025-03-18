@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Mock Interview Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-900 text-white">
+    <!-- Navigation Bar -->
+    <nav class="bg-gray-800 p-4 flex justify-between items-center">
+        <span class="text-2xl font-bold ml-4">AI Mock Interview</span>
+
+        <!-- Navigation Links -->
+        <div class="flex space-x-4">
+            <a href="#" class="hover:text-gray-300">Dashboard</a>
+            <a href="#" class="hover:text-gray-300">Questions</a>
+            <a href="#" class="hover:text-gray-300">Upgrade</a>
+            <a href="#" class="hover:text-gray-300">How It Works</a>
+        </div>
+
+        <!-- User Info & Logout Button -->
+        <div class="flex items-center space-x-4">
+            <span class="text-white font-semibold">{{ user.username }}</span>
+            <a href="{% url 'logout' %}"
+                class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm">Logout</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-8">
+        <h1 class="text-3xl font-bold mb-4">Dashboard</h1>
+
+        <div class="flex flex-col gap-8">
+            <!-- Add New Button -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-md flex items-center justify-center w-fit">
+                <button onclick="openModal()"
+                    class="bg-green-500 hover:bg-green-700 text-white font-bold py-3 px-6 rounded">
+                    + Add New
+                </button>
+            </div>
+
+            <!-- Modal for Job Details -->
+            <div id="interviewModal"
+                class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center">
+                <div class="bg-gray-800 p-6 rounded-lg shadow-lg w-96 relative">
+                    <button onclick="closeModal()" class="absolute top-2 right-2 text-white text-2xl">&times;</button>
+                    <h2 class="text-2xl font-semibold mb-4">New Interview</h2>
+                    <form id="interviewForm">
+                        {% csrf_token %}
+                        <label class="block text-gray-300">Job Role:</label>
+                        <input type="text" id="jobRole" class="w-full p-2 bg-gray-700 text-white rounded mb-2" required>
+
+                        <label class="block text-gray-300">Job Description:</label>
+                        <textarea id="jobDescription"
+                            class="w-full p-2 bg-gray-700 text-white rounded mb-2" required></textarea>
+
+                        <label class="block text-gray-300">Years of Experience:</label>
+                        <input type="number" id="experience"
+                            class="w-full p-2 bg-gray-700 text-white rounded mb-2" required min="0">
+
+                        <button type="submit" id="startInterviewBtn"
+                            class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded w-full mt-2"
+                            data-url="{% url 'interview_page' %}">
+                            Start Interview
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Previous Mock Interviews -->
+            <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold mb-4">Previous Mock Interviews</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-4">
+                    {% for interview in interviews %}
+                    <div class="bg-gray-700 p-4 rounded-lg shadow">
+                        <h3 class="text-lg font-medium">{{ interview.position }}</h3>
+                        <p class="text-gray-400">{{ interview.experience }} Years of Experience</p>
+                        <p class="text-gray-400">Created At: {{ interview.created_at }}</p>
+                        <div class="mt-2 flex space-x-2">
+                            <button
+                                class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded text-sm">Feedback</button>
+                            <button
+                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm">Start</button>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <p class="text-gray-400">No previous interviews found.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- JavaScript -->
+    <script>
+        function openModal() {
+            document.getElementById("interviewModal").classList.remove("hidden");
+        }
+
+        function closeModal() {
+            document.getElementById("interviewModal").classList.add("hidden");
+        }
+
+        // Close modal when clicking outside
+        document.addEventListener("click", function (event) {
+            const modal = document.getElementById("interviewModal");
+            if (event.target === modal) {
+                closeModal();
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                closeModal();
+            }
+        });
+
+        function getCSRFToken() {
+            const cookieValue = document.cookie
+                .split("; ")
+                .find(row => row.startsWith("csrftoken="))
+                ?.split("=")[1];
+            return cookieValue || "";
+        }
+
+        document.getElementById("interviewForm").addEventListener("submit", async function (event) {
+            event.preventDefault(); // Prevent default form submission
+
+            const roleInput = document.getElementById("jobRole");
+            const descriptionInput = document.getElementById("jobDescription");
+            const experienceInput = document.getElementById("experience");
+            const submitButton = event.target.querySelector("button[type='submit']");
+            const interviewPageUrl = submitButton.getAttribute("data-url");
+
+            const role = roleInput.value.trim();
+            const description = descriptionInput.value.trim();
+            const experience = experienceInput.value.trim();
+
+            // Clear previous session data
+            sessionStorage.removeItem("jobRole");
+            sessionStorage.removeItem("jobDescription");
+            sessionStorage.removeItem("experience");
+
+            // Check if input is valid
+            if (!role || role === "Default Role" || !description || description === "Default job description" || !experience || experience < 0) {
+                alert("Please enter valid job details. Experience should be a positive number.");
+                return;
+            }
+
+            // Store job details in session storage
+            sessionStorage.setItem("jobRole", role);
+            sessionStorage.setItem("jobDescription", description);
+            sessionStorage.setItem("experience", experience);
+
+            // Show loading state
+            submitButton.disabled = true;
+            submitButton.textContent = "Starting...";
+
+            try {
+                const csrftoken = getCSRFToken();
+                if (!csrftoken) {
+                    alert("CSRF token missing. Please refresh the page and try again.");
+                    return;
+                }
+
+                console.log("Sending data:", { role, description, experience });
+
+                const response = await fetch("/api/start-interview/", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrftoken
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({ role, description, experience })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.questions) {
+                    localStorage.setItem("interviewQuestions", JSON.stringify(data.questions));
+                    window.location.href = interviewPageUrl;
+                } else {
+                    alert(data.error || "Failed to start the interview. Please try again.");
+                }
+            } catch (error) {
+                console.error("Error starting interview:", error);
+                alert("An error occurred. Please try again.");
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = "Start Interview";
+            }
+        });
+    </script>
+
+</body>
+
+</html>

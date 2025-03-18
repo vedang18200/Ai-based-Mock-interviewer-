@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Mock Interview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-900 text-white flex justify-center items-center h-screen">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"> <!-- Add CSRF token -->
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg w-3/4 flex">
+        <!-- Left Side: Interview Question -->
+        <div class="w-1/2 p-4">
+            <h2 class="text-2xl font-semibold mb-4">Interview Question</h2>
+            <p id="question" class="text-lg text-gray-300">Loading question...</p>
+
+            <button onclick="startRecording()" id="startBtn"
+                class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mt-4">
+                Start Recording
+            </button>
+            <button onclick="stopRecording()" id="stopBtn"
+                class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mt-4 hidden">
+                Stop Recording
+            </button>
+            <button onclick="terminateTest()"
+                class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded mt-4">
+                Terminate Test
+            </button>
+
+            <h3 class="text-xl font-semibold mt-4">Recorded Answer:</h3>
+            <p id="transcript" class="text-gray-300 mt-2">...</p>
+            
+            <h3 class="text-xl font-semibold mt-4">Evaluation:</h3>
+            <p id="evaluation" class="text-gray-300 mt-2">Waiting for evaluation...</p>
+        </div>
+
+        <!-- Right Side: Webcam -->
+        <div class="w-1/2 flex justify-center items-center">
+            <video id="webcam" class="rounded-lg shadow-lg w-full"></video>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let transcriptElem = document.getElementById("transcript");
+        let evaluationElem = document.getElementById("evaluation");
+        let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.continuous = false;
+        recognition.lang = 'en-US';
+
+        let questions = [];
+        let currentQuestionIndex = 0;
+        let userAnswers = [];
+
+        // Check browser support
+        if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {
+            alert("Your browser does not support speech recognition. Please use Chrome or Edge.");
+        }
+
+        async function loadQuestions() {
+            try {
+                let response = await fetch("/api/start-interview/");
+                let data = await response.json();
+                questions = data.questions;
+                document.getElementById("question").textContent = questions[currentQuestionIndex] || "No questions available.";
+            } catch (error) {
+                console.error("Error fetching questions:", error);
+            }
+        }
+
+        async function startRecording() {
+            try {
+                document.getElementById("startBtn").classList.add("hidden");
+                document.getElementById("stopBtn").classList.remove("hidden");
+
+                let stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById("webcam").srcObject = stream;
+                document.getElementById("webcam").play();
+
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.start();
+
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.start();
+
+                recognition.onresult = (event) => {
+                    let transcript = Array.from(event.results)
+                        .map(result => result[0].transcript)
+                        .join('');
+                    console.log('Transcript:', transcript);
+                    transcriptElem.textContent = transcript;
+                    userAnswers[currentQuestionIndex] = transcript;
+                };
+
+                recognition.onerror = (event) => {
+                    console.error("Speech recognition error:", event.error);
+                    alert("Speech recognition failed. Please try again.");
+                };
+            } catch (error) {
+                console.error("Error accessing media devices:", error);
+                alert("Please allow microphone and webcam access to proceed.");
+            }
+        }
+
+        async function stopRecording() {
+            console.log('Stop Recording Triggered');
+            document.getElementById("startBtn").classList.remove("hidden");
+            document.getElementById("stopBtn").classList.add("hidden");
+        
+            mediaRecorder.stop();
+            recognition.stop();
+        
+            let answer = userAnswers[currentQuestionIndex];
+            console.log('Answer to evaluate:', answer);  // Log the answer
+            await evaluateAnswer(answer);
+        
+            if (currentQuestionIndex < questions.length - 1) {
+                currentQuestionIndex++;
+                document.getElementById("question").textContent = questions[currentQuestionIndex];
+                transcriptElem.textContent = "...";
+            } else {
+                alert("Interview completed! Redirecting to dashboard...");
+                window.location.href = "/dashboard";
+            }
+        }
+        async function evaluateAnswer(answer) {
+            console.log('Evaluating answer:', answer);  // Log the answer to verify
+            try {
+                let csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                let response = await fetch("/api/evaluate-answer/", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken
+                    },
+                    body: JSON.stringify({ answer })
+                });
+        
+                let data = await response.json();
+                console.log('Response:', data);  // Log the response from the server
+                evaluationElem.textContent = data.evaluation || "No evaluation available.";
+            } catch (error) {
+                console.error("Error evaluating answer:", error);
+            }
+        }
+
+        function terminateTest() {
+            alert("Interview Terminated");
+            window.location.href = "/dashboard";
+        }
+
+        loadQuestions();
+    </script>
+</body>
+
+</html>
