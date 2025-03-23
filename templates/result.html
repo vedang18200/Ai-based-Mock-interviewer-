@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview Results</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white flex justify-center items-center h-screen">
+
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg w-3/4">
+        <h1 class="text-2xl font-semibold text-center mb-4">Final Interview Evaluation</h1>
+
+        <div class="p-4 bg-gray-700 rounded-lg">
+            <h2 class="text-xl font-bold">Overall Feedback</h2>
+            <p class="text-gray-300">{{ evaluation }}</p>
+        </div>
+
+        <div class="mt-4 p-4 bg-gray-700 rounded-lg">
+            <h2 class="text-xl font-bold">Strengths</h2>
+            <p class="text-gray-300">{{ strengths }}</p>
+        </div>
+
+        <div class="mt-4 p-4 bg-gray-700 rounded-lg">
+            <h2 class="text-xl font-bold">Areas of Improvement</h2>
+            <p class="text-gray-300">{{ improvement }}</p>
+        </div>
+
+        <div class="mt-4 p-4 bg-gray-700 rounded-lg text-center">
+            <h2 class="text-xl font-bold">Interview Score</h2>
+            <p class="text-gray-300 text-2xl font-bold">{{ score }}/10</p>
+        </div>
+
+        <div class="mt-6 text-center">
+            <a href="/dashboard" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+</body>
+</html>

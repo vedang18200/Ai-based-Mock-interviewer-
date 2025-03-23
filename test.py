@@ -1,7 +1,15 @@
+import json
 import requests
 
-API_KEY = "AIzaSyBa6y10WFEQu2SDoLACcHKo86tzfhNetaQ"
-url = f"https://generativelanguage.googleapis.com/v1/models?key={API_KEY}"
+url = "https://ai-based-mock-interviewe-64e51-default-rtdb.firebaseio.com/mock_interviews.json"
 
 response = requests.get(url)
-print(response.json())  # Check available models
+
+# Debugging step: Print the response text
+print("Raw Response:", response.text)
+
+try:
+    data = response.json()  # Try to decode JSON
+    print("Decoded Data:", data)
+except json.decoder.JSONDecodeError:
+    print("Error: Response is not valid JSON!")

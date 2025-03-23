@@ -9,7 +9,7 @@
 </head>
 
 <body class="bg-gray-900 text-white flex justify-center items-center h-screen">
-    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"> <!-- Add CSRF token -->
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"> <!-- CSRF Token -->
 
     <div class="bg-gray-800 p-6 rounded-lg shadow-lg w-3/4 flex">
         <!-- Left Side: Interview Question -->
@@ -27,14 +27,11 @@
             </button>
             <button onclick="terminateTest()"
                 class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded mt-4">
-                Terminate Test
+                Finish Interview
             </button>
 
             <h3 class="text-xl font-semibold mt-4">Recorded Answer:</h3>
             <p id="transcript" class="text-gray-300 mt-2">...</p>
-            
-            <h3 class="text-xl font-semibold mt-4">Evaluation:</h3>
-            <p id="evaluation" class="text-gray-300 mt-2">Waiting for evaluation...</p>
         </div>
 
         <!-- Right Side: Webcam -->
@@ -46,19 +43,13 @@
     <script>
         let mediaRecorder;
         let transcriptElem = document.getElementById("transcript");
-        let evaluationElem = document.getElementById("evaluation");
-        let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.continuous = false;
-        recognition.lang = 'en-US';
-
         let questions = [];
         let currentQuestionIndex = 0;
         let userAnswers = [];
 
-        // Check browser support
-        if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {
-            alert("Your browser does not support speech recognition. Please use Chrome or Edge.");
-        }
+        let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.continuous = false;
+        recognition.lang = 'en-US';
 
         async function loadQuestions() {
             try {
@@ -83,17 +74,17 @@
                 mediaRecorder = new MediaRecorder(stream);
                 mediaRecorder.start();
 
-                recognition.continuous = true;
-                recognition.interimResults = true;
                 recognition.start();
 
                 recognition.onresult = (event) => {
                     let transcript = Array.from(event.results)
                         .map(result => result[0].transcript)
                         .join('');
-                    console.log('Transcript:', transcript);
                     transcriptElem.textContent = transcript;
-                    userAnswers[currentQuestionIndex] = transcript;
+                    userAnswers[currentQuestionIndex] = {
+                        question: questions[currentQuestionIndex],
+                        answer: transcript
+                    };
                 };
 
                 recognition.onerror = (event) => {
@@ -107,52 +98,90 @@
         }
 
         async function stopRecording() {
-            console.log('Stop Recording Triggered');
             document.getElementById("startBtn").classList.remove("hidden");
             document.getElementById("stopBtn").classList.add("hidden");
         
             mediaRecorder.stop();
             recognition.stop();
-        
-            let answer = userAnswers[currentQuestionIndex];
-            console.log('Answer to evaluate:', answer);  // Log the answer
-            await evaluateAnswer(answer);
-        
+
             if (currentQuestionIndex < questions.length - 1) {
                 currentQuestionIndex++;
                 document.getElementById("question").textContent = questions[currentQuestionIndex];
                 transcriptElem.textContent = "...";
             } else {
-                alert("Interview completed! Redirecting to dashboard...");
-                window.location.href = "/dashboard";
+                alert("Interview completed! Click 'Finish Interview' to evaluate your answers.");
             }
         }
-        async function evaluateAnswer(answer) {
-            console.log('Evaluating answer:', answer);  // Log the answer to verify
+
+        async function terminateTest() {
+            alert("Interview completed! Evaluating your answers...");
+            print("Final JSON Response:", json.dumps(evaluation_data, indent=2))
+
+        
+            let csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        
             try {
-                let csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-                let response = await fetch("/api/evaluate-answer/", {
+                let response = await fetch("/api/evaluate-interview/", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         "X-CSRFToken": csrfToken
                     },
-                    body: JSON.stringify({ answer })
+                    body: JSON.stringify({ answers: userAnswers })  // Send all answers at once
                 });
         
                 let data = await response.json();
-                console.log('Response:', data);  // Log the response from the server
-                evaluationElem.textContent = data.evaluation || "No evaluation available.";
+                console.log('Final Evaluation Response:', data);
+        
+                // Redirect to result page with evaluation data
+                window.location.href = "/result/?evaluation=" + encodeURIComponent(JSON.stringify(data));
+            } catch (error) {
+                console.error("Error during final evaluation:", error);
+                alert("Something went wrong! Please try again.");
+            }
+        }
+        async function evaluateAnswer(answers) {
+            console.log("Evaluating answers:", answers);
+        
+            try {
+                let csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+                if (!csrfToken) {
+                    console.error("CSRF token not found!");
+                    return;
+                }
+        
+                // Extract non-null answers
+                let validAnswers = answers.filter(a => a !== null);
+                if (validAnswers.length === 0) {
+                    console.error("No valid answers provided!");
+                    return;
+                }
+        
+                let latestAnswer = validAnswers[validAnswers.length - 1].answer; // Get last valid answer
+                console.log("Sending answer:", latestAnswer);
+        
+                let response = await fetch("/api/evaluate-interview/", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken
+                    },
+                    body: JSON.stringify({ answer: latestAnswer })
+                });
+        
+                let data = await response.json();
+                console.log("Response:", data);
+        
+                if (data.evaluation) {
+                    document.getElementById("evaluation").textContent = data.evaluation;
+                } else {
+                    console.error("Missing 'evaluation' field in response");
+                    document.getElementById("evaluation").textContent = "Evaluation data unavailable.";
+                }
             } catch (error) {
                 console.error("Error evaluating answer:", error);
             }
         }
-
-        function terminateTest() {
-            alert("Interview Terminated");
-            window.location.href = "/dashboard";
-        }
-
         loadQuestions();
     </script>
 </body>

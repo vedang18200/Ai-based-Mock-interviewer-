@@ -71,26 +71,49 @@
             </div>
 
             <!-- Previous Mock Interviews -->
-            <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+            <section id="previous-mock-interviews">
                 <h2 class="text-2xl font-semibold mb-4">Previous Mock Interviews</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-4">
-                    {% for interview in interviews %}
-                    <div class="bg-gray-700 p-4 rounded-lg shadow">
-                        <h3 class="text-lg font-medium">{{ interview.position }}</h3>
-                        <p class="text-gray-400">{{ interview.experience }} Years of Experience</p>
-                        <p class="text-gray-400">Created At: {{ interview.created_at }}</p>
-                        <div class="mt-2 flex space-x-2">
-                            <button
-                                class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded text-sm">Feedback</button>
-                            <button
-                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm">Start</button>
-                        </div>
-                    </div>
-                    {% empty %}
-                    <p class="text-gray-400">No previous interviews found.</p>
-                    {% endfor %}
+                <div id="interview-list" class="bg-gray-800 p-4 rounded-lg shadow-md">
+                    <p id="loading-text" class="text-gray-400">Loading interviews...</p>
                 </div>
-            </div>
+            </section>
+            
+            <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                fetch('/api/get_past_interviews')
+                    .then(response => response.json())
+                    .then(data => {
+                        let interviewList = document.getElementById("interview-list");
+                        interviewList.innerHTML = ""; // Clear loading text
+
+                        if (data.past_interviews.length === 0) {
+                            interviewList.innerHTML = "<p class='text-gray-400'>No previous interviews found.</p>";
+                        }
+
+                        data.past_interviews.forEach(interview => {
+                            let div = document.createElement("div");
+                            div.className = "p-4 border-b border-gray-700";
+                            div.innerHTML = `
+                                <h3 class="text-lg font-bold text-white">${interview.job_title}</h3>
+                                <p class="text-gray-400">Score: ${interview.score.toFixed(1)} / 10</p>
+                                <button onclick="retakeInterview('${interview.id}')"
+                                    class="mt-2 bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded">
+                                    Retake
+                                </button>
+                            `;
+                            interviewList.appendChild(div);
+                        });
+                    })
+                    .catch(error => {
+                        console.error("Error fetching past interviews:", error);
+                        document.getElementById("interview-list").innerHTML = "<p class='text-red-400'>Failed to load interviews.</p>";
+                    });
+            });
+
+            function retakeInterview(interviewId) {
+                window.location.href = `/interview/?id=${interviewId}`;
+            }
+            </script>
         </div>
     </main>
 
@@ -104,92 +127,54 @@
             document.getElementById("interviewModal").classList.add("hidden");
         }
 
-        // Close modal when clicking outside
-        document.addEventListener("click", function (event) {
-            const modal = document.getElementById("interviewModal");
-            if (event.target === modal) {
-                closeModal();
-            }
+        document.getElementById("interviewModal").addEventListener("click", function (event) {
+            if (event.target === this) closeModal();
         });
 
-        // Close modal on Escape key
         document.addEventListener("keydown", function (event) {
-            if (event.key === "Escape") {
-                closeModal();
-            }
+            if (event.key === "Escape") closeModal();
         });
 
         function getCSRFToken() {
-            const cookieValue = document.cookie
-                .split("; ")
-                .find(row => row.startsWith("csrftoken="))
-                ?.split("=")[1];
-            return cookieValue || "";
+            return document.querySelector("input[name='csrfmiddlewaretoken']").value;
         }
 
         document.getElementById("interviewForm").addEventListener("submit", async function (event) {
-            event.preventDefault(); // Prevent default form submission
+            event.preventDefault();
+            const role = document.getElementById("jobRole").value.trim();
+            const description = document.getElementById("jobDescription").value.trim();
+            const experience = document.getElementById("experience").value.trim();
+            const submitButton = document.getElementById("startInterviewBtn");
 
-            const roleInput = document.getElementById("jobRole");
-            const descriptionInput = document.getElementById("jobDescription");
-            const experienceInput = document.getElementById("experience");
-            const submitButton = event.target.querySelector("button[type='submit']");
-            const interviewPageUrl = submitButton.getAttribute("data-url");
-
-            const role = roleInput.value.trim();
-            const description = descriptionInput.value.trim();
-            const experience = experienceInput.value.trim();
-
-            // Clear previous session data
-            sessionStorage.removeItem("jobRole");
-            sessionStorage.removeItem("jobDescription");
-            sessionStorage.removeItem("experience");
-
-            // Check if input is valid
-            if (!role || role === "Default Role" || !description || description === "Default job description" || !experience || experience < 0) {
-                alert("Please enter valid job details. Experience should be a positive number.");
+            if (!role || !description || experience < 0) {
+                alert("Please enter valid job details.");
                 return;
             }
 
-            // Store job details in session storage
-            sessionStorage.setItem("jobRole", role);
-            sessionStorage.setItem("jobDescription", description);
-            sessionStorage.setItem("experience", experience);
-
-            // Show loading state
             submitButton.disabled = true;
             submitButton.textContent = "Starting...";
 
             try {
-                const csrftoken = getCSRFToken();
-                if (!csrftoken) {
-                    alert("CSRF token missing. Please refresh the page and try again.");
-                    return;
-                }
-
-                console.log("Sending data:", { role, description, experience });
-
                 const response = await fetch("/api/start-interview/", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "X-CSRFToken": csrftoken
+                        "X-CSRFToken": getCSRFToken()
                     },
                     credentials: "include",
                     body: JSON.stringify({ role, description, experience })
                 });
 
                 const data = await response.json();
-
                 if (response.ok && data.questions) {
                     localStorage.setItem("interviewQuestions", JSON.stringify(data.questions));
-                    window.location.href = interviewPageUrl;
+                    window.location.href = submitButton.getAttribute("data-url");
                 } else {
-                    alert(data.error || "Failed to start the interview. Please try again.");
+                    alert(data.error || "Failed to start the interview.");
                 }
             } catch (error) {
-                console.error("Error starting interview:", error);
-                alert("An error occurred. Please try again.");
+                console.error("Error:", error);
+                alert("An error occurred.");
             } finally {
                 submitButton.disabled = false;
                 submitButton.textContent = "Start Interview";
@@ -198,5 +183,4 @@
     </script>
 
 </body>
-
 </html>

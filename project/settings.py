@@ -31,6 +31,8 @@ ALLOWED_HOSTS = ['*']
 SOCIAL_AUTH_GOOGLE_CLIENT_ID = '538950305321-k7lj1hmsomgt44gg4uts5f0ln7265k1i.apps.googleusercontent.com'
 SOCIAL_AUTH_GOOGLE_SECRET = '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'
 
+
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 # Application definition
 
 INSTALLED_APPS = [
