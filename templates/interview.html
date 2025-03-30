@@ -1,9 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="en" class="dark">`
     <title>AI Mock Interview</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -36,7 +32,7 @@
 
         <!-- Right Side: Webcam -->
         <div class="w-1/2 flex justify-center items-center">
-            <video id="webcam" class="rounded-lg shadow-lg w-full"></video>
+            <video id="webcam" class="rounded-lg shadow-lg w-full" autoplay></video>
         </div>
     </div>
 
@@ -69,7 +65,6 @@
 
                 let stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 document.getElementById("webcam").srcObject = stream;
-                document.getElementById("webcam").play();
 
                 mediaRecorder = new MediaRecorder(stream);
                 mediaRecorder.start();
@@ -100,7 +95,7 @@
         async function stopRecording() {
             document.getElementById("startBtn").classList.remove("hidden");
             document.getElementById("stopBtn").classList.add("hidden");
-        
+
             mediaRecorder.stop();
             recognition.stop();
 
@@ -115,10 +110,10 @@
 
         async function terminateTest() {
             alert("Interview completed! Evaluating your answers...");
-            print("Final JSON Response:", json.dumps(evaluation_data, indent=2))
-
-        
+            
             let csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        
+            console.log("User Answers before sending:", JSON.stringify(userAnswers, null, 2)); // Debugging
         
             try {
                 let response = await fetch("/api/evaluate-interview/", {
@@ -127,61 +122,27 @@
                         "Content-Type": "application/json",
                         "X-CSRFToken": csrfToken
                     },
-                    body: JSON.stringify({ answers: userAnswers })  // Send all answers at once
+                    body: JSON.stringify({ answers: userAnswers })
                 });
+        
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
         
                 let data = await response.json();
                 console.log('Final Evaluation Response:', data);
         
-                // Redirect to result page with evaluation data
-                window.location.href = "/result/?evaluation=" + encodeURIComponent(JSON.stringify(data));
+                if (data.success) {
+                    window.location.href = "/result/";
+                } else {
+                    alert("Evaluation failed. Please try again.");
+                }
             } catch (error) {
                 console.error("Error during final evaluation:", error);
-                alert("Something went wrong! Please try again.");
+                alert("Something went wrong! Check the console for details.");
             }
         }
-        async function evaluateAnswer(answers) {
-            console.log("Evaluating answers:", answers);
-        
-            try {
-                let csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
-                if (!csrfToken) {
-                    console.error("CSRF token not found!");
-                    return;
-                }
-        
-                // Extract non-null answers
-                let validAnswers = answers.filter(a => a !== null);
-                if (validAnswers.length === 0) {
-                    console.error("No valid answers provided!");
-                    return;
-                }
-        
-                let latestAnswer = validAnswers[validAnswers.length - 1].answer; // Get last valid answer
-                console.log("Sending answer:", latestAnswer);
-        
-                let response = await fetch("/api/evaluate-interview/", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRFToken": csrfToken
-                    },
-                    body: JSON.stringify({ answer: latestAnswer })
-                });
-        
-                let data = await response.json();
-                console.log("Response:", data);
-        
-                if (data.evaluation) {
-                    document.getElementById("evaluation").textContent = data.evaluation;
-                } else {
-                    console.error("Missing 'evaluation' field in response");
-                    document.getElementById("evaluation").textContent = "Evaluation data unavailable.";
-                }
-            } catch (error) {
-                console.error("Error evaluating answer:", error);
-            }
-        }
+
         loadQuestions();
     </script>
 </body>

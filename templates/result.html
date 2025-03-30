@@ -6,29 +6,29 @@
     <title>Interview Results</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white flex justify-center items-center h-screen">
+<body class="bg-gray-900 text-white flex justify-center items-center min-h-screen">
 
     <div class="bg-gray-800 p-6 rounded-lg shadow-lg w-3/4">
         <h1 class="text-2xl font-semibold text-center mb-4">Final Interview Evaluation</h1>
 
         <div class="p-4 bg-gray-700 rounded-lg">
             <h2 class="text-xl font-bold">Overall Feedback</h2>
-            <p class="text-gray-300">{{ evaluation }}</p>
+            <p id="evaluation" class="text-gray-300"></p>
         </div>
 
         <div class="mt-4 p-4 bg-gray-700 rounded-lg">
             <h2 class="text-xl font-bold">Strengths</h2>
-            <p class="text-gray-300">{{ strengths }}</p>
+            <p id="strengths" class="text-green-400"></p>
         </div>
 
         <div class="mt-4 p-4 bg-gray-700 rounded-lg">
             <h2 class="text-xl font-bold">Areas of Improvement</h2>
-            <p class="text-gray-300">{{ improvement }}</p>
+            <p id="improvement" class="text-red-400"></p>
         </div>
 
         <div class="mt-4 p-4 bg-gray-700 rounded-lg text-center">
             <h2 class="text-xl font-bold">Interview Score</h2>
-            <p class="text-gray-300 text-2xl font-bold">{{ score }}/10</p>
+            <p id="score" class="text-gray-300 text-2xl font-bold"></p>
         </div>
 
         <div class="mt-6 text-center">
@@ -38,5 +38,18 @@
         </div>
     </div>
 
+    <script>
+        // Retrieve JSON data from Django context
+        let evaluationData = "{{ evaluation|escapejs }}";
+        let strengthsData = "{{ strengths|escapejs }}";
+        let improvementData = "{{ improvement|escapejs }}";
+        let scoreData = "{{ score|escapejs }}";
+
+        // Ensure the data is parsed correctly
+        document.getElementById("evaluation").innerText = evaluationData || "No evaluation available.";
+        document.getElementById("strengths").innerText = strengthsData || "No strengths mentioned.";
+        document.getElementById("improvement").innerText = improvementData || "No improvement areas listed.";
+        document.getElementById("score").innerText = scoreData ? `${scoreData}` : "N/A";
+    </script>
 </body>
 </html>

@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     login_view, register_view, logout_view, dashboard_view, interview_view,
     add_job_entry, start_interview_api, speech_to_text,
-    submit_answer, evaluate_interview, get_past_interviews ,result_page
+    submit_answer, evaluate_interview, get_past_interviews ,result_view
 )
 
 urlpatterns = [
@@ -22,5 +22,5 @@ urlpatterns = [
     # path('api/evaluate-answer/', evaluate_answer, name='evaluate_answer'),  # ✅ Add this line
     path('api/evaluate-interview/', evaluate_interview, name='evaluate_interview'),
     path('api/get-past-interviews/', get_past_interviews, name='get_past_interviews'),
-    path("result/", result_page, name="result_page"),
+    path("result/", result_view, name="result_page"),
 ]

@@ -97,18 +97,29 @@ def logout_view(request):
 
 from django.shortcuts import render
 
-def result_page(request):
-    # Get evaluation data from session
-    evaluation_data = request.session.get("evaluation_data", {})
+# def result_page(request):
+#     # Get evaluation data from session
+#     evaluation_data = request.session.get("evaluation_data", {})
 
-    context = {
-        "evaluation": evaluation_data.get("evaluation", "No evaluation available."),
-        "strengths": evaluation_data.get("strengths", "No strengths detected."),
-        "improvement": evaluation_data.get("improvement", "No improvement suggestions."),
-        "score": evaluation_data.get("score", "N/A"),
-    }
+#     context = {
+#         "evaluation": evaluation_data.get("evaluation", "No evaluation available."),
+#         "strengths": evaluation_data.get("strengths", "No strengths detected."),
+#         "improvement": evaluation_data.get("improvement", "No improvement suggestions."),
+#         "score": evaluation_data.get("score", "N/A"),
+#     }
 
-    return render(request, "result.html", context)
+#     return render(request, "result.html", context)
+def result_view(request):
+    # ✅ Retrieve stored evaluation data from session
+    evaluation_data = request.session.pop("evaluation_data", {
+        "evaluation": "No data received",
+        "strengths": "No data received",
+        "improvement": "No data received",
+        "score": "No data received"
+    })
+
+    return render(request, "result.html", evaluation_data)
+
 
 
 
@@ -320,18 +331,14 @@ def evaluate_interview(request):
             data = json.loads(request.body)
             print("Received JSON:", data)
 
-            # Ensure 'answers' exists and filter out invalid entries
             answers = [a for a in data.get("answers", []) if a and isinstance(a, dict) and "answer" in a and a["answer"].strip()]
-
             if not answers:
                 return JsonResponse({"error": "No valid answer provided."}, status=400)
 
-            # Extract the most recent valid answer
             last_answer = answers[-1]["answer"]
             print("Evaluating:", last_answer)
 
             model = genai.GenerativeModel("gemini-1.5-pro-latest")
-
             prompt = f"""
             You are an AI-based interview evaluator. Analyze the response carefully.
 
@@ -345,7 +352,6 @@ def evaluate_interview(request):
                 "score": "Numerical rating (e.g., 8/10)"
             }}
             """
-
             response = model.generate_content(prompt)
 
             if not response or not hasattr(response, "text"):
@@ -354,14 +360,13 @@ def evaluate_interview(request):
             raw_text = response.text.strip()
             print("Raw Gemini Response:", raw_text)
 
-            # Parse Gemini's response safely
             evaluation_data = parse_gemini_response(raw_text)
 
             # ✅ Store evaluation results in the session
             request.session["evaluation_data"] = evaluation_data
 
-            # ✅ Redirect to the result page
-            return redirect("/result/")
+            # ✅ Instead of redirecting, return JSON response
+            return JsonResponse({"success": True})
 
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON format."}, status=400)
