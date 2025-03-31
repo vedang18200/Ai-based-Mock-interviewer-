@@ -5,7 +5,6 @@ from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.utils.timezone import now
 from django.core.exceptions import ObjectDoesNotExist
-from .firebase_config import db
 from .models import JobEntry, Interview  # Ensure these models exist
 import uuid
 from django.contrib.auth import authenticate, login, logout
@@ -110,15 +109,20 @@ from django.shortcuts import render
 
 #     return render(request, "result.html", context)
 def result_view(request):
-    # ✅ Retrieve stored evaluation data from session
-    evaluation_data = request.session.pop("evaluation_data", {
+    # ✅ Debugging: Print session keys
+    print("Available Session Keys:", list(request.session.keys()))
+
+    # ✅ Retrieve session data safely
+    evaluation_data = request.session.get("evaluation_data", {
         "evaluation": "No data received",
         "strengths": "No data received",
         "improvement": "No data received",
-        "score": "No data received"
+        "score": "No data received",
     })
 
     return render(request, "result.html", evaluation_data)
+
+
 
 
 
@@ -192,9 +196,14 @@ def start_interview_api(request):
         try:
             # Parse JSON data
             data = json.loads(request.body)
+            print("🔍 Received Request Data:", data)
             role = data.get('role')
             description = data.get('description')
             experience = data.get('experience')
+
+            print("📌 Role:", role)
+            print("📌 Description:", description)
+            print("📌 Experience:", experience)
 
             if not all([role, description, experience]):
                 return JsonResponse({"error": "All fields are required"}, status=400)
@@ -254,7 +263,13 @@ def start_interview_api(request):
             request.session["interview_id"] = interview.id
             request.session["interview_questions"] = questions or []
             request.session["user_answers"] = []
+            request.session["role"] = role
+            request.session["description"] = description
+            request.session["experience"] = experience
+            request.session.modified = True  # Ensure session updates
 
+            print("🔍 Session Data Stored:", request.session.get("role"), request.session.get("description"))
+            
             return JsonResponse({"questions": questions})
 
         except json.JSONDecodeError:
@@ -279,6 +294,10 @@ def start_interview_api(request):
                     questions = latest_interview.questions
                     request.session["interview_questions"] = questions
                     request.session["interview_id"] = latest_interview.id
+                    request.session["role"] = latest_interview.position
+                    request.session["description"] = latest_interview.description
+                    request.session["experience"] = latest_interview.experience
+                    request.session.modified = True
                 else:
                     return JsonResponse({"error": "No active interview found"}, status=404)
 
@@ -315,21 +334,73 @@ def submit_answer(request):
 
     return JsonResponse({"error": "Invalid request method"}, status=405)
 
-
 import google.generativeai as genai
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
+import firebase_admin
+from firebase_admin import credentials, firestore
+import re
 
-# 🔹 Initialize Gemini AI with your API key
+# 🔹 Define your API key
+
+
+# 🔹 Initialize Gemini AI
 genai.configure(api_key=GEMINI_API_KEY)
-@csrf_exempt
+model = genai.GenerativeModel("gemini-1.5-pro-latest")
+import firebase_admin
+from firebase_admin import credentials, firestore
 
+# Check if Firebase is already initialized
+if not firebase_admin._apps:
+    print("Initializing Firebase...")
+    cred = credentials.Certificate("V:\Mock interview\serviceaccountkey.json")  # Correct path to your JSON key
+    firebase_admin.initialize_app(cred)
+else:
+    print("Firebase is already initialized.")
+
+# Now try connecting to Firestore
+db = firestore.client()
+
+# Check if Firestore is working
+print("Firestore connected successfully!")
+docs = db.collection("interviews").get()
+
+for doc in docs:
+    print(doc.id, doc.to_dict())
+
+# Fetch documents from 'interviews' collection
+docs = db.collection("interviews").get()
+
+for doc in docs:
+    print(doc.id, doc.to_dict())
+
+
+
+import json
+from django.http import JsonResponse
+from django.shortcuts import redirect
+import firebase_admin
+from firebase_admin import firestore
+@csrf_exempt
 def evaluate_interview(request):
     if request.method == "POST":
         try:
+            # ✅ Parse JSON input
             data = json.loads(request.body)
             print("Received JSON:", data)
+
+            role = data.get("role")
+            description = data.get("description")
+
+            print("Role Received:", role)  # Debugging
+            print("Description Received:", description)  # Debugging
+
+            # Convert empty values to None
+            role = None if not role or role.strip() == "" else role
+            description = None if not description or description.strip() == "" else description
+
+
 
             answers = [a for a in data.get("answers", []) if a and isinstance(a, dict) and "answer" in a and a["answer"].strip()]
             if not answers:
@@ -338,7 +409,7 @@ def evaluate_interview(request):
             last_answer = answers[-1]["answer"]
             print("Evaluating:", last_answer)
 
-            model = genai.GenerativeModel("gemini-1.5-pro-latest")
+            # ✅ Generate evaluation using Gemini AI
             prompt = f"""
             You are an AI-based interview evaluator. Analyze the response carefully.
 
@@ -360,13 +431,48 @@ def evaluate_interview(request):
             raw_text = response.text.strip()
             print("Raw Gemini Response:", raw_text)
 
+            # ✅ Extract evaluation details
             evaluation_data = parse_gemini_response(raw_text)
+            score = evaluation_data.get("score", "N/A")
 
-            # ✅ Store evaluation results in the session
-            request.session["evaluation_data"] = evaluation_data
+            # ✅ Store evaluation results in Firestore with correct role & description
+            interview_data = {
+                "role": role,  
+                "description": description,  
+                "score": score,
+                "timestamp": firestore.SERVER_TIMESTAMP
+            }
 
-            # ✅ Instead of redirecting, return JSON response
-            return JsonResponse({"success": True})
+            # Debugging: Print what will be stored in Firestore
+            print("Firestore Data to Store:", interview_data)
+
+            # Remove None values before storing
+            interview_data = {k: v for k, v in interview_data.items() if v is not None}
+
+            interview_ref = db.collection("interviews").add(interview_data)
+
+
+            
+            # ✅ Store evaluation in Django session (including role & description)
+            request.session["evaluation_data"] = {
+                "role": role,  # Store role in session
+                "description": description,  # Store description in session
+                "evaluation": evaluation_data.get("evaluation", "No data"),
+                "strengths": evaluation_data.get("strengths", "No data"),
+                "improvement": evaluation_data.get("improvement", "No data"),
+                "score": evaluation_data.get("score", "No data"),
+            }
+            request.session.modified = True  # Ensure session is updated
+            print("✅ Storing Evaluation Data in Session:")
+            print(request.session["evaluation_data"])
+
+
+            return JsonResponse({
+                "success": True,
+                "message": "Evaluation completed!",
+                "evaluation": evaluation_data,
+                "interview_id": interview_ref[1].id  # Correct way to get the document ID
+            }, status=200)
 
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON format."}, status=400)
@@ -375,8 +481,6 @@ def evaluate_interview(request):
             return JsonResponse({"error": str(e)}, status=500)
 
     return JsonResponse({"error": "Invalid request method."}, status=405)
-
-
 
 # 🔹 Improved Helper Function to Parse Gemini Response
 def parse_gemini_response(response_text):
@@ -416,16 +520,36 @@ def parse_gemini_response(response_text):
         }
 
 
+import firebase_admin
+from firebase_admin import firestore
+
+# Initialize Firestore if not already initialized
+if not firebase_admin._apps:
+    firebase_admin.initialize_app()
+
+db = firestore.client()
+
 @login_required
 def get_past_interviews(request):
-    """Fetch user's past interviews and allow retakes."""
+    """Fetch user's past interviews and allow retakes, including Firestore scores."""
     interviews = Interview.objects.filter(user=request.user).order_by("-created_at")
-    return JsonResponse({
-    "previous_interviews": [
-        {"id": i.id, "job_title": i.position, "score": i.final_score}  # ✅ Use 'position' instead of 'job_title'
-        for i in interviews
-    ]
-})
+    interview_list = []
+
+    for interview in interviews:
+        # Fetch score from Firestore
+        doc_ref = db.collection("interviews").document(str(interview.id))
+        doc = doc_ref.get()
+        score = None
+        if doc.exists:
+            score = doc.to_dict().get("score", "Pending")  # Get score or "Pending" if not found
+
+        interview_list.append({
+            "id": interview.id,
+            "job_title": interview.position,  # ✅ Use 'position' instead of 'job_title'
+            "score": score  # ✅ Fetch from Firestore
+        })
+
+    return JsonResponse({"previous_interviews": interview_list})
 
 
 @login_required
@@ -436,71 +560,27 @@ def retake_interview(request, interview_id):
     request.session["interview_questions"] = interview.questions
     return redirect("interview")
 
-# from django.http import JsonResponse
+from django.http import JsonResponse
+import firebase_admin
+from firebase_admin import firestore
 
-# import json
-# import requests
-# import logging
-# from django.http import JsonResponse
-# from django.views.decorators.csrf import csrf_exempt
+db = firestore.client()
 
-# logger = logging.getLogger(__name__)
+def delete_interview(request, interview_id):
+    if request.method == "DELETE":
+        db.collection("interviews").document(interview_id).delete()
+        return JsonResponse({"message": "Deleted successfully"}, status=200)
+    return JsonResponse({"error": "Invalid request"}, status=400)
 
-# @csrf_exempt
-# def evaluate_answer(request):
-#     if request.method == "POST":
-#         try:
-#             raw_body = request.body.decode("utf-8")  # Decode request body
-#             logger.info(f"Raw Request Body: {raw_body}")  # Log raw request data
-            
-#             data = json.loads(raw_body)  # Parse JSON safely
-#             user_answer = data.get("answer", "").strip()
+@csrf_exempt  # 🔴 Disable CSRF for simplicity (use Solution 1 if needed)
+def delete_all_interviews(request):
+    if request.method == "DELETE":
+        interviews_ref = db.collection("interviews")
+        interviews = interviews_ref.stream()
 
-#             if not user_answer:
-#                 logger.warning("Missing 'answer' in request data")
-#                 return JsonResponse({"error": "No answer provided"}, status=400)
+        for interview in interviews:
+            interview.reference.delete()
 
-#             # Construct Gemini API Prompt
-#             prompt = {
-#                 "contents": [{
-#                     "parts": [{
-#                         "text": f"Evaluate this answer: {user_answer}. Provide a score (out of 10) and short feedback."
-#                     }]
-#                 }]
-#             }
+        return JsonResponse({"message": "All interviews deleted successfully"}, status=200)
 
-#             response = requests.post(GEMINI_API_URL, json=prompt, params={"key": GEMINI_API_KEY}, timeout=10)
-
-#             if response.status_code != 200:
-#                 logger.error(f"Gemini API error: {response.status_code} - {response.text}")
-#                 return JsonResponse({"error": "Failed to evaluate answer"}, status=500)
-
-#             # Extract API Response Safely
-#             try:
-#                 response_data = response.json()
-#                 evaluation_text = (
-#                     response_data.get("candidates", [{}])[0]
-#                     .get("content", {})
-#                     .get("parts", [{}])[0]
-#                     .get("text", "No feedback available.")
-#                 )
-#             except (json.JSONDecodeError, KeyError, IndexError):
-#                 logger.error("Invalid response format from Gemini API")
-#                 evaluation_text = "Error in processing evaluation."
-
-#             return JsonResponse({"evaluation": evaluation_text})
-
-#         except json.JSONDecodeError:
-#             logger.error("Invalid JSON format received")
-#             return JsonResponse({"error": "Invalid JSON data"}, status=400)
-#         except requests.exceptions.Timeout:
-#             logger.error("Request to Gemini API timed out")
-#             return JsonResponse({"error": "Request timed out"}, status=500)
-#         except requests.exceptions.RequestException as e:
-#             logger.error(f"Request to Gemini API failed: {e}")
-#             return JsonResponse({"error": "API request failed"}, status=500)
-#         except Exception as e:
-#             logger.error(f"Unexpected error: {e}")
-#             return JsonResponse({"error": "Internal server error"}, status=500)
-
-#     return JsonResponse({"error": "Invalid request method"}, status=405)
+    return JsonResponse({"error": "Invalid request"}, status=400)

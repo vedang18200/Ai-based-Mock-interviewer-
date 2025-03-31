@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">`
+<html lang="en" class="dark">
+<head>
     <title>AI Mock Interview</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -42,6 +43,7 @@
         let questions = [];
         let currentQuestionIndex = 0;
         let userAnswers = [];
+        let stream;
 
         let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
         recognition.continuous = false;
@@ -51,10 +53,11 @@
             try {
                 let response = await fetch("/api/start-interview/");
                 let data = await response.json();
-                questions = data.questions;
-                document.getElementById("question").textContent = questions[currentQuestionIndex] || "No questions available.";
+                questions = data.questions || []; // Handle undefined case
+                document.getElementById("question").textContent = questions.length > 0 ? questions[currentQuestionIndex] : "No questions available.";
             } catch (error) {
                 console.error("Error fetching questions:", error);
+                document.getElementById("question").textContent = "Error loading questions.";
             }
         }
 
@@ -63,7 +66,7 @@
                 document.getElementById("startBtn").classList.add("hidden");
                 document.getElementById("stopBtn").classList.remove("hidden");
 
-                let stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 document.getElementById("webcam").srcObject = stream;
 
                 mediaRecorder = new MediaRecorder(stream);
@@ -77,7 +80,7 @@
                         .join('');
                     transcriptElem.textContent = transcript;
                     userAnswers[currentQuestionIndex] = {
-                        question: questions[currentQuestionIndex],
+                        question: questions[currentQuestionIndex] || "Unknown question",
                         answer: transcript
                     };
                 };
@@ -96,12 +99,17 @@
             document.getElementById("startBtn").classList.remove("hidden");
             document.getElementById("stopBtn").classList.add("hidden");
 
-            mediaRecorder.stop();
+            if (mediaRecorder) mediaRecorder.stop();
             recognition.stop();
+
+            // Stop the webcam stream properly
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
 
             if (currentQuestionIndex < questions.length - 1) {
                 currentQuestionIndex++;
-                document.getElementById("question").textContent = questions[currentQuestionIndex];
+                document.getElementById("question").textContent = questions[currentQuestionIndex] || "No more questions.";
                 transcriptElem.textContent = "...";
             } else {
                 alert("Interview completed! Click 'Finish Interview' to evaluate your answers.");
@@ -111,9 +119,25 @@
         async function terminateTest() {
             alert("Interview completed! Evaluating your answers...");
             
-            let csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            let csrfTokenElem = document.querySelector('[name=csrfmiddlewaretoken]');
+            if (!csrfTokenElem) {
+                alert("CSRF token not found!");
+                return;
+            }
+            let csrfToken = csrfTokenElem.value;
         
-            console.log("User Answers before sending:", JSON.stringify(userAnswers, null, 2)); // Debugging
+            const urlParams = new URLSearchParams(window.location.search);
+            const selectedRole = urlParams.get("role");
+            const jobDescription = urlParams.get("description");
+            const yearsExperience = urlParams.get("experience");
+
+// Use them where needed
+console.log("Role:", selectedRole, "Description:", jobDescription, "Experience:", yearsExperience);
+
+        
+            console.log("Selected Role:", selectedRole);
+            console.log("Job Description:", jobDescription);
+            console.log("User Answers before sending:", JSON.stringify(userAnswers, null, 2));
         
             try {
                 let response = await fetch("/api/evaluate-interview/", {
@@ -122,7 +146,11 @@
                         "Content-Type": "application/json",
                         "X-CSRFToken": csrfToken
                     },
-                    body: JSON.stringify({ answers: userAnswers })
+                    body: JSON.stringify({ 
+                        role: selectedRole,  
+                        description: jobDescription,  
+                        answers: userAnswers 
+                    })
                 });
         
                 if (!response.ok) {
@@ -142,9 +170,8 @@
                 alert("Something went wrong! Check the console for details.");
             }
         }
-
+        
         loadQuestions();
     </script>
 </body>
-
 </html>
