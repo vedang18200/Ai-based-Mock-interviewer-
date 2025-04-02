@@ -572,7 +572,7 @@ def delete_interview(request, interview_id):
         return JsonResponse({"message": "Deleted successfully"}, status=200)
     return JsonResponse({"error": "Invalid request"}, status=400)
 
-@csrf_exempt  
+@csrf_exempt  # 🔴 Disable CSRF for simplicity (use Solution 1 if needed)
 def delete_all_interviews(request):
     if request.method == "DELETE":
         interviews_ref = db.collection("interviews")
